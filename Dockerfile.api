@@ -1,0 +1,30 @@
+FROM node:20-alpine AS build
+WORKDIR /app
+
+# Workspace manifest + sources
+COPY package.json package-lock.json* ./
+COPY packages/core/package.json packages/core/
+COPY packages/api/package.json packages/api/
+COPY packages/web/package.json packages/web/
+RUN npm install
+
+COPY packages/core packages/core
+COPY packages/api packages/api
+COPY packages/web packages/web
+
+# Type-check the kernel and build the web bundle
+RUN npm run build -w @collabmd/core
+RUN npm run build -w @collabmd/web
+
+# ---- runtime ----
+FROM node:20-alpine
+WORKDIR /app
+ENV NODE_ENV=production
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/package.json ./package.json
+COPY --from=build /app/packages/core ./packages/core
+COPY --from=build /app/packages/api ./packages/api
+COPY --from=build /app/packages/web/dist ./packages/web/dist
+
+EXPOSE 4000
+CMD ["node", "--import", "tsx", "packages/api/src/server.ts"]

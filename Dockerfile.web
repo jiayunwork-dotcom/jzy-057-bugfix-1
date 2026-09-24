@@ -1,0 +1,14 @@
+FROM node:20-alpine AS build
+WORKDIR /app
+COPY package.json package-lock.json* ./
+COPY packages/core/package.json packages/core/
+COPY packages/web/package.json packages/web/
+RUN npm install
+COPY packages/core packages/core
+COPY packages/web packages/web
+RUN npm run build -w @collabmd/web
+
+FROM nginx:1.27-alpine
+COPY packages/web/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/packages/web/dist /usr/share/nginx/html
+EXPOSE 80
