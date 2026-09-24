@@ -1,6 +1,19 @@
 import pg from 'pg';
 import { config } from './config.js';
 
+// node-postgres returns BIGINT (int8, type OID 20) columns as strings by
+// default, because int8 can exceed JS safe-integer range. Every int8 column in
+// this schema holds an epoch-millisecond timestamp (created_at/updated_at) or an
+// op/seq counter — all far below Number.MAX_SAFE_INTEGER — so parse them as
+// numbers. Leaving them as strings breaks `new Date(created_at)` in the
+// browser: numeric strings are not a parseable date format and render as
+// "Invalid Date" whenever a row is re-read from Postgres.
+export function parseInt8(value: string): number {
+  return Number(value);
+}
+
+pg.types.setTypeParser(pg.types.builtins.INT8, parseInt8);
+
 export const pool = new pg.Pool({ connectionString: config.databaseUrl });
 
 export async function waitForDatabase(retries = 30, delayMs = 1000): Promise<void> {
