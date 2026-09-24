@@ -55,6 +55,13 @@ export interface ReplyRow {
 
 const now = (): number => Date.now();
 
+// node-postgres returns BIGINT columns as strings (to avoid precision loss).
+// Our epoch-ms timestamps and op offsets are safe integer magnitudes, so
+// normalize them at the persistence boundary: leaving them as strings makes
+// `new Date(ts)` render "Invalid Date" in the browser and turns arithmetic
+// like `now - created_at` into string concatenation.
+const num = (v: number | string): number => Number(v);
+
 export const repo = {
   // ---- users / auth ----
   async findUserByLogin(username: string): Promise<UserRow | null> {
@@ -239,7 +246,7 @@ export const repo = {
       'SELECT id,doc_id,kind,name,op_offset,based_on,author,created_at FROM versions WHERE doc_id=$1 ORDER BY created_at',
       [docId],
     );
-    return r.rows;
+    return r.rows.map((v) => ({ ...v, op_offset: num(v.op_offset), created_at: num(v.created_at) }));
   },
   async insertVersion(v: VersionRow): Promise<void> {
     await pool.query(
@@ -253,7 +260,8 @@ export const repo = {
       'SELECT id,doc_id,kind,name,op_offset,based_on,author,created_at FROM versions WHERE doc_id=$1 AND id=$2',
       [docId, versionId],
     );
-    return r.rows[0] ?? null;
+    const v = r.rows[0];
+    return v ? { ...v, op_offset: num(v.op_offset), created_at: num(v.created_at) } : null;
   },
 
   // ---- comments ----
@@ -262,7 +270,7 @@ export const repo = {
       'SELECT id,doc_id,quote,anchor_idx,status,thread_state,author,created_at FROM comments WHERE doc_id=$1 ORDER BY created_at',
       [docId],
     );
-    return r.rows;
+    return r.rows.map((c) => ({ ...c, created_at: num(c.created_at) }));
   },
   async insertComment(c: CommentRow): Promise<void> {
     await pool.query(
@@ -292,7 +300,7 @@ export const repo = {
        WHERE comment_id = ANY($1) ORDER BY created_at`,
       [commentIds],
     );
-    return r.rows;
+    return r.rows.map((rp) => ({ ...rp, created_at: num(rp.created_at) }));
   },
   async insertReply(r: ReplyRow): Promise<void> {
     await pool.query(
